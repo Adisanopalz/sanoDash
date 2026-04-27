@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parkour 3D - Web Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #87CEEB; /* Warna langit default sebelum ThreeJS dimuat */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        
+        #game-canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Overlay UI Menu */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 10;
+            transition: opacity 0.3s ease;
+        }
+
+        h1 {
+            font-size: 4rem;
+            margin-bottom: 10px;
+            text-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            letter-spacing: 2px;
+            color: #4CAF50;
+        }
+
+        .instructions {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px 40px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 30px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .instructions p {
+            font-size: 1.2rem;
+            line-height: 1.6;
+            margin: 10px 0;
+        }
+
+        .key {
+            background: #fff;
+            color: #333;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            box-shadow: 0 2px 0 #ccc;
+        }
+
+        .start-btn {
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 6px 0 #2E7D32;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        .start-btn:hover {
+            background: #45a049;
+            transform: translateY(2px);
+            box-shadow: 0 4px 0 #2E7D32;
+        }
+
+        .start-btn:active {
+            transform: translateY(6px);
+            box-shadow: 0 0px 0 #2E7D32;
+        }
+
+        /* Crosshair di tengah layar */
+        .crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 6px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 5;
+            pointer-events: none;
+            box-shadow: 0 0 4px rgba(0,0,0,0.5);
+        }
+
+        /* Heads Up Display (HUD) */
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        #message {
+            position: absolute;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #FFEB3B;
+            font-size: 2rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            z-index: 5;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+    </style>
+    <!-- Memuat Library Three.js dari CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="hud">Misi: Capai Kotak Hijau!</div>
+    <div id="message">Kamu Jatuh! Respawn...</div>
+    <div class="crosshair"></div>
+
+    <div id="ui-layer">
+        <h1>PARKOUR 3D</h1>
+        <div class="instructions">
+            <p>Gunakan mouse untuk mengarahkan kamera.</p>
+            <p><span class="key">W</span> <span class="key">A</span> <span class="key">S</span> <span class="key">D</span> - Bergerak</p>
+            <p><span class="key">Spasi</span> - Lompat</p>
+            <p><span class="key">Shift</span> - Lari Cepat</p>
+        </div>
+        <button class="start-btn" id="start-btn">Klik Untuk Main</button>
+    </div>
+
+    <script>
+        // Tunggu sampai seluruh halaman dimuat
+        window.onload = function() {
+            initGame();
+        };
+
+        function initGame() {
+            // === KONFIGURASI DASAR ===
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); // Warna langit
+            scene.fog = new THREE.Fog(0x87CEEB, 20, 100);
+
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            // === PENCAHAYAAN ===
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(50, 100, 50);
+            dirLight.castShadow = true;
+            dirLight.shadow.camera.left = -50;
+            dirLight.shadow.camera.right = 50;
+            dirLight.shadow.camera.top = 50;
+            dirLight.shadow.camera.bottom = -50;
+            scene.add(dirLight);
+
+            // === MATERIAL & GEOMETRI ===
+            const matNormal = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8 });
+            const matStart = new THREE.MeshStandardMaterial({ color: 0x2196F3, roughness: 0.8 }); // Biru
+            const matGoal = new THREE.MeshStandardMaterial({ color: 0x4CAF50, roughness: 0.8, emissive: 0x1b5e20 }); // Hijau
+            const matLava = new THREE.MeshStandardMaterial({ color: 0xf44336, roughness: 0.9, emissive: 0x8e0000 }); // Merah
+
+            // Menyimpan semua rintangan untuk deteksi tabrakan
+            const platforms = [];
+
+            // Fungsi untuk membuat platform
+            function createPlatform(x, y, z, w, h, d, type = 'normal') {
+                const geom = new THREE.BoxGeometry(w, h, d);
+                let mat = matNormal;
+                
+                if(type === 'start') mat = matStart;
+                else if(type === 'goal') mat = matGoal;
+                else if(type === 'lava') mat = matLava;
+
+                const mesh = new THREE.Mesh(geom, mat);
+                mesh.position.set(x, y, z);
+                mesh.receiveShadow = true;
+                mesh.castShadow = true;
+                scene.add(mesh);
+
+                // Buat Bounding Box untuk deteksi tabrakan
+                const box = new THREE.Box3().setFromObject(mesh);
+                platforms.push({ mesh, box, type });
+            }
+
+            // === DESAIN LEVEL PARKOUR ===
+            // Start
+            createPlatform(0, -2, 0, 10, 4, 10, 'start');
+            
+            // Loncatan 1
+            createPlatform(0, -1, -12, 4, 2, 4);
+            createPlatform(0, 0, -22, 4, 2, 4);
+            
+            // Jembatan tipis
+            createPlatform(0, 1, -34, 2, 1, 10);
+            
+            // Loncatan zig-zag naik
+            createPlatform(-8, 3, -42, 4, 1, 4);
+            createPlatform(8, 5, -50, 4, 1, 4);
+            createPlatform(-8, 7, -58, 4, 1, 4);
+            createPlatform(0, 9, -68, 6, 1, 6); // Platform Istirahat
+            
+            // Jebakan Lava (Harus dilompati)
+            createPlatform(0, 8, -80, 10, 1, 10, 'lava'); // Jangan disentuh!
+            createPlatform(-6, 10, -76, 2, 1, 2); // Pijakan aman
+            createPlatform(6, 11, -84, 2, 1, 2); // Pijakan aman
+
+            // Tangga vertikal
+            createPlatform(0, 13, -95, 3, 0.5, 3);
+            createPlatform(0, 16, -100, 3, 0.5, 3);
+            
+            // Finish Line
+            createPlatform(0, 15, -115, 12, 2, 12, 'goal');
+
+            // === KARAKTER PEMAIN ===
+            const playerHeight = 2;
+            const playerRadius = 0.6;
+            const playerGeom = new THREE.BoxGeometry(playerRadius * 2, playerHeight, playerRadius * 2);
+            // Karakter dibuat transparan agar tidak menghalangi kamera sepenuhnya
+            const playerMat = new THREE.MeshStandardMaterial({ color: 0xffeb3b, transparent: true, opacity: 0 }); 
+            const player = new THREE.Mesh(playerGeom, playerMat);
+            
+            // Titik Awal
+            const startPos = new THREE.Vector3(0, 2, 0);
+            player.position.copy(startPos);
+            scene.add(player);
+
+            // Bounding box pemain untuk fisika
+            const playerBox = new THREE.Box3();
+
+            // === VARIABEL FISIKA & KONTROL ===
+            const velocity = new THREE.Vector3();
+            const direction = new THREE.Vector3();
+            let isGrounded = false;
+            
+            const speedNormal = 10;
+            const speedRun = 18;
+            const jumpForce = 15;
+            const gravity = 40;
+
+            let yaw = 0;   // Rotasi Kiri/Kanan
+            let pitch = 0; // Rotasi Atas/Bawah
+            const cameraDistance = 4; // Jarak kamera dari pemain
+
+            // Status Tombol
+            const keys = {
+                w: false, a: false, s: false, d: false,
+                space: false, shift: false
+            };
+
+            // === EVENT LISTENERS ===
+            const uiLayer = document.getElementById('ui-layer');
+            const startBtn = document.getElementById('start-btn');
+            const messageEl = document.getElementById('message');
+
+            // Sistem Pointer Lock (Mengunci Mouse)
+            startBtn.addEventListener('click', () => {
+                document.body.requestPointerLock();
+            });
+
+            document.addEventListener('pointerlockchange', () => {
+                if (document.pointerLockElement === document.body) {
+                    uiLayer.style.display = 'none'; // Sembunyikan UI
+                } else {
+                    uiLayer.style.display = 'flex'; // Tampilkan UI jika pause
+                }
+            });
+
+            // Input Keyboard
+            document.addEventListener('keydown', (e) => {
+                switch(e.code) {
+                    case 'KeyW': keys.w = true; break;
+                    case 'KeyA': keys.a = true; break;
+                    case 'KeyS': keys.s = true; break;
+                    case 'KeyD': keys.d = true; break;
+                    case 'Space': 
+                        if(isGrounded) {
+                            velocity.y = jumpForce;
+                            isGrounded = false;
+                        }
+                        break;
+                    case 'ShiftLeft': keys.shift = true; break;
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                switch(e.code) {
+                    case 'KeyW': keys.w = false; break;
+                    case 'KeyA': keys.a = false; break;
+                    case 'KeyS': keys.s = false; break;
+                    case 'KeyD': keys.d = false; break;
+                    case 'ShiftLeft': keys.shift = false; break;
+                }
+            });
+
+            // Input Mouse untuk Kamera
+            document.addEventListener('mousemove', (e) => {
+                if (document.pointerLockElement === document.body) {
+                    // Sensitivitas mouse
+                    const sensitivity = 0.002;
+                    yaw -= e.movementX * sensitivity;
+                    pitch -= e.movementY * sensitivity;
+
+                    // Batasi rotasi kamera atas/bawah agar tidak terbalik (clamping)
+                    const maxPitch = Math.PI / 2 - 0.1;
+                    pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch));
+                }
+            });
+
+            // Resize Window
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            // Fungsi Respawn
+            function respawn(msg) {
+                player.position.copy(startPos);
+                velocity.set(0,0,0);
+                yaw = 0;
+                pitch = 0;
+                
+                messageEl.innerText = msg;
+                messageEl.style.opacity = 1;
+                setTimeout(() => { messageEl.style.opacity = 0; }, 2000);
+            }
+
+            // Fungsi Kemenangan
+            function winGame() {
+                document.exitPointerLock();
+                uiLayer.style.display = 'flex';
+                uiLayer.innerHTML = `
+                    <h1 style="color: gold;">KAMU MENANG!</h1>
+                    <div class="instructions"><p>Hebat! Kamu berhasil menyelesaikan rintangan parkour.</p></div>
+                    <button class="start-btn" onclick="location.reload()">Main Lagi</button>
+                `;
+            }
+
+            // === GAME LOOP ===
+            const clock = new THREE.Clock();
+
+            function animate() {
+                requestAnimationFrame(animate);
+
+                const delta = Math.min(clock.getDelta(), 0.1); // Batasi delta agar fisika tidak tembus saat lag
+
+                // Jika game sedang aktif (mouse terkunci)
+                if (document.pointerLockElement === document.body) {
+                    
+                    // --- PERGERAKAN (XZ) ---
+                    direction.z = Number(keys.s) - Number(keys.w);
+                    direction.x = Number(keys.d) - Number(keys.a);
+                    direction.normalize(); // Biar gerak diagonal ga lebih cepat
+
+                    const speed = keys.shift ? speedRun : speedNormal;
+
+                    if (direction.x !== 0 || direction.z !== 0) {
+                        // Putar arah pergerakan sesuai arah pandangan kamera (yaw)
+                        const angle = Math.atan2(direction.x, direction.z) + yaw;
+                        const moveX = Math.sin(angle) * speed;
+                        const moveZ = Math.cos(angle) * speed;
+                        
+                        // Akselerasi & Gesekan simulasi sederhana
+                        velocity.x += (moveX - velocity.x) * 10 * delta;
+                        velocity.z += (moveZ - velocity.z) * 10 * delta;
+                    } else {
+                        // Melambat jika tidak ada tombol ditekan (Friction)
+                        velocity.x -= velocity.x * 10 * delta;
+                        velocity.z -= velocity.z * 10 * delta;
+                    }
+
+                    // --- GRAVITASI (Y) ---
+                    velocity.y -= gravity * delta;
+
+                    // --- DETEKSI TABRAKAN (COLLISION RESOLUTION) ---
+                    // Trik terbaik: Update sumbu satu per satu lalu cek tabrakan (Sweep & Prune sederhana)
+
+                    // 1. Update Sumbu X
+                    player.position.x += velocity.x * delta;
+                    player.updateMatrixWorld();
+                    playerBox.setFromObject(player);
+                    for (let p of platforms) {
+                        if (playerBox.intersectsBox(p.box)) {
+                            // Resolusi X
+                            if (velocity.x > 0) player.position.x = p.box.min.x - playerRadius;
+                            else player.position.x = p.box.max.x + playerRadius;
+                            velocity.x = 0;
+                            player.updateMatrixWorld();
+                            playerBox.setFromObject(player);
+                        }
+                    }
+
+                    // 2. Update Sumbu Z
+                    player.position.z += velocity.z * delta;
+                    player.updateMatrixWorld();
+                    playerBox.setFromObject(player);
+                    for (let p of platforms) {
+                        if (playerBox.intersectsBox(p.box)) {
+                            // Resolusi Z
+                            if (velocity.z > 0) player.position.z = p.box.min.z - playerRadius;
+                            else player.position.z = p.box.max.z + playerRadius;
+                            velocity.z = 0;
+                            player.updateMatrixWorld();
+                            playerBox.setFromObject(player);
+                        }
+                    }
+
+                    // 3. Update Sumbu Y
+                    player.position.y += velocity.y * delta;
+                    player.updateMatrixWorld();
+                    playerBox.setFromObject(player);
+                    isGrounded = false;
+                    for (let p of platforms) {
+                        if (playerBox.intersectsBox(p.box)) {
+                            
+                            // Cek Interaksi Khusus
+                            if (p.type === 'lava') {
+                                respawn("Terbakar Lava!");
+                                break;
+                            } else if (p.type === 'goal') {
+                                winGame();
+                                break;
+                            }
+
+                            // Resolusi Y
+                            if (velocity.y < 0) { 
+                                // Mendarat (Jatuh dari atas)
+                                player.position.y = p.box.max.y + playerHeight / 2;
+                                isGrounded = true;
+                                velocity.y = 0;
+                            } else if (velocity.y > 0) {
+                                // Kepala mentok atap
+                                player.position.y = p.box.min.y - playerHeight / 2;
+                                velocity.y = 0;
+                            }
+                            player.updateMatrixWorld();
+                            playerBox.setFromObject(player);
+                        }
+                    }
+
+                    // Kematian karena jatuh ke jurang
+                    if (player.position.y < -20) {
+                        respawn("Kamu Jatuh Ke Jurang!");
+                    }
+
+                    // --- UPDATE POSISI KAMERA THIRD PERSON ---
+                    // Hitung posisi kamera berdasarkan yaw (Kiri/Kanan) dan pitch (Atas/Bawah)
+                    const camX = player.position.x + cameraDistance * Math.sin(yaw) * Math.cos(pitch);
+                    const camY = player.position.y + (playerHeight/2) + cameraDistance * Math.sin(pitch);
+                    const camZ = player.position.z + cameraDistance * Math.cos(yaw) * Math.cos(pitch);
+
+                    camera.position.set(camX, camY, camZ);
+                    
+                    // Kamera selalu melihat ke kepala karakter
+                    camera.lookAt(player.position.x, player.position.y + (playerHeight/4), player.position.z);
+                }
+
+                renderer.render(scene, camera);
+            }
+
+            animate(); // Mulai loop
+        }
+    </script>
+</body>
+</html>
